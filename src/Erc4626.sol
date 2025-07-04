@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-contract Erc4626 {
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract Erc4626 is IERC20 {
     /*   address public asset;
     address public shares; */
 
