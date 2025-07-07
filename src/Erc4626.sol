@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract Erc4626 is IERC20 {
-    /*   address public asset;
-    address public shares; */
+contract Erc4626 is ERC20 {
+    using SafeERC20 for ERC20;
+
+    ERC20 private immutable _asset; //Asset,
 
     event Deposit(
         address indexed sender,
@@ -22,17 +24,40 @@ contract Erc4626 is IERC20 {
         uint256 shares
     );
 
-    function asset() public view returns (address assetTokenAddress) {}
+    error InvalidShares();
+    error InvalidAssets();
+    error InvalidReceiver();
+    error InvalidOwner();
 
-    function totalAssets() public view returns (uint256 totalManagedAssets) {}
+    constructor(ERC20 asset_) ERC20("Shares", "S") {
+        _asset = asset_;
+    }
+
+    function asset() public view returns (address assetTokenAddress) {
+        return address(_asset);
+    }
+
+    function totalAssets() public view returns (uint256 totalManagedAssets) {
+        return _asset.balanceOf(address(this));
+    }
 
     function convertToShares(
         uint256 assets
-    ) public view returns (uint256 shares) {}
+    ) public view returns (uint256 shares) {
+        if (totalSupply() == 0) {
+            return assets;
+        } else {
+            return ((assets * totalSupply()) / totalAssets());
+        }
+    }
 
     function convertToAssets(
         uint256 shares
-    ) public view returns (uint256 assets) {}
+    ) public view returns (uint256 assets) {
+        uint256 totalSupply = totalSupply();
+        require(totalSupply > 0, "No shares minted yet");
+        return ((shares * totalAssets()) / totalSupply);
+    }
 
     function maxDeposit(
         address receiver
@@ -42,55 +67,152 @@ contract Erc4626 is IERC20 {
 
     function previewDeposit(
         uint256 assets
-    ) public view returns (uint256 shares) {}
+    ) public view returns (uint256 shares) {
+        return convertToShares(assets);
+    }
 
     function deposit(
         address receiver,
         uint256 assets
     ) public returns (uint256 shares) {
+        if (receiver == address(0)) {
+            revert InvalidReceiver();
+        }
+
+        if (assets > maxDeposit(receiver)) {
+            revert InvalidShares();
+        }
+
+        shares = convertToShares(assets);
+
+        if (shares <= 0) {
+            revert InvalidShares();
+        }
+
+        _asset.safeTransferFrom(msg.sender, address(this), assets);
+        _mint(receiver, shares);
         emit Deposit(msg.sender, receiver, assets, shares);
+
+        return shares;
     }
 
     function maxMint(address receiver) public view returns (uint256 maxShares) {
         return type(uint256).max;
     }
 
-    function previewMint(uint256 shares) public view returns (uint256 assets) {}
+    function previewMint(uint256 shares) public view returns (uint256 assets) {
+        return convertToAssets(shares);
+    }
 
     function mint(
         address receiver,
         uint256 shares
     ) public returns (uint256 assets) {
+        if (receiver == address(0)) {
+            revert InvalidReceiver();
+        }
+
+        if (shares > maxMint(receiver)) {
+            revert InvalidShares();
+        }
+
+        assets = convertToAssets(shares);
+
+        if (assets == 0) {
+            revert InvalidAssets();
+        }
+
+        _asset.safeTransferFrom(msg.sender, address(this), assets);
+        _mint(receiver, shares);
+
         emit Deposit(msg.sender, receiver, assets, shares);
+        return assets;
     }
 
     function maxWithdraw(
         address owner
-    ) public view returns (uint256 maxAssets) {}
+    ) public view returns (uint256 maxAssets) {
+        return convertToAssets(balanceOf(owner));
+    }
 
     function previewWithdraw(
         uint256 assets
-    ) public view returns (uint256 shares) {}
+    ) public view returns (uint256 shares) {
+        return convertToShares(assets);
+    }
 
     function withdraw(
         address receiver,
         address owner,
         uint256 assets
     ) public returns (uint256 shares) {
+        if (receiver == address(0)) {
+            revert InvalidReceiver();
+        }
+
+        if (owner == address(0)) {
+            revert InvalidOwner();
+        }
+
+        if (assets > maxWithdraw(receiver)) {
+            revert InvalidShares();
+        }
+
+        shares = convertToShares(assets);
+
+        if (shares <= 0) {
+            revert InvalidShares();
+        }
+
+        if (msg.sender != owner) {
+            _spendAllowance(owner, msg.sender, shares);
+        }
+
+        _asset.safeTransfer(receiver, assets);
+        _burn(owner, shares);
+
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
+        return shares;
     }
 
-    function maxRedeem(address owner) public view returns (uint256 maxShares) {}
+    function maxRedeem(address owner) public view returns (uint256 maxShares) {
+        return balanceOf(owner);
+    }
 
     function previewRedeem(
         uint256 shares
-    ) public view returns (uint256 assets) {}
+    ) public view returns (uint256 assets) {
+        return convertToAssets(shares);
+    }
 
-    function Redeem(
+    function redeem(
         address receiver,
         address owner,
         uint256 shares
     ) public returns (uint256 assets) {
+        if (receiver == address(0)) {
+            revert InvalidReceiver();
+        }
+
+        if (shares > maxRedeem(owner)) {
+            revert InvalidShares();
+        }
+
+        assets = convertToAssets(shares);
+
+        if (assets == 0) {
+            revert InvalidAssets();
+        }
+
+        if (msg.sender != owner) {
+            _spendAllowance(owner, msg.sender, shares);
+        }
+
+        _burn(owner, shares);
+        _asset.safeTransfer(receiver, assets);
+
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
+
+        return assets;
     }
 }
