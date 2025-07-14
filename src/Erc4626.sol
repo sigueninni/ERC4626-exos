@@ -54,9 +54,12 @@ contract Erc4626 is ERC20 {
     function convertToAssets(
         uint256 shares
     ) public view returns (uint256 assets) {
-        uint256 totalSupply = totalSupply();
+        /*     uint256 totalSupply = totalSupply();
         require(totalSupply > 0, "No shares minted yet");
-        return ((shares * totalAssets()) / totalSupply);
+        return ((shares * totalAssets()) / totalSupply); */
+
+        uint256 supply = totalSupply();
+        return supply == 0 ? shares : (shares * totalAssets()) / supply;
     }
 
     function maxDeposit(
